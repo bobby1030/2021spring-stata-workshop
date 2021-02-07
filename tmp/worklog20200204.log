@@ -1,0 +1,117 @@
+----------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /home/bobbyho/Projects/2021spring-stata-workshop/tmp/worklog20200204.log
+  log type:  text
+ opened on:   4 Feb 2021, 22:21:30
+
+. 
+. use $raw
+
+. 
+. global cols    = "id zip v1 v2y v2m agegp v6a v106"
+
+. global new_cols = "id zip gender birth_year birth_month agegp edu_level inc_level"
+
+. 
+. keep $cols
+
+. rename ($cols) ($new_cols)
+
+. 
+. 
+. mdesc
+
+    Variable    |     Missing          Total     Percent Missing
+----------------+-----------------------------------------------
+             id |           0          2,034           0.00
+            zip |           0          2,034           0.00
+         gender |           0          2,034           0.00
+     birth_year |           0          2,034           0.00
+    birth_month |           0          2,034           0.00
+      edu_level |           0          2,034           0.00
+      inc_level |           0          2,034           0.00
+          agegp |           2          2,034           0.10
+----------------+-----------------------------------------------
+
+. 
+. decode zip, gen(zip_str)
+
+. gen city = substr(zip_str, 1, 9)
+
+. 
+. recode edu_level (1 2 5 9 13/17 22/99 = .) (3 = 6) (4 = 9) (6 7 8= 12) (10 11 = 14) (12 = 15) (19 = 16) (20 = 18) (21 = 23), gen(edu_year)
+(1827 differences between edu_level and edu_year)
+
+. recode inc_level (96/max = .) (1 = 0) (22=250000) (23 = 300000), gen(income)
+(605 differences between inc_level and income)
+
+. 
+. 
+. replace income = (income-1.5)*10000 if inrange(inc_level, 2, 21)
+(1,429 real changes made)
+
+. gen ln_income = ln(income)
+(591 missing values generated)
+
+. replace ln_income = 0 if income == 0
+(90 real changes made)
+
+. 
+. 
+. tab gender, gen(gender_)
+
+     1.性別 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+       男性 |      1,042       51.23       51.23
+       女性 |        992       48.77      100.00
+------------+-----------------------------------
+      Total |      2,034      100.00
+
+. rename (gender_1 gender_2) (male female)
+
+. 
+. 
+. gen entry_year = birth_year + 12 if inrange(birth_month, 1, 8)
+(756 missing values generated)
+
+. replace entry_year = birth_year + 13 if inrange(birth_month, 9, 12)
+(729 real changes made)
+
+. label variable entry_year "國中入學學年度（民國）"
+
+. 
+. 
+. bysort entry_year: egen mean_edu_year = mean(edu_year)
+(3 missing values generated)
+
+. bysort entry_year: egen size = count(id)
+
+. 
+. 
+. label var mean_edu_year "平均教育年數（按國中入學年度）"
+
+. label var size "人數（按國中入學年度）"
+
+. save "data/final_data_2015.dta", replace
+file data/final_data_2015.dta saved
+
+. 
+. preserve
+
+. gen tmp = 1
+
+. collapse (sum) size = tmp (mean) mean_edu_year = edu_year, by(entry_year)
+
+. save "$tables/GroupEduYearTable_2015.dta", replace
+file tables/GroupEduYearTable_2015.dta saved
+
+. restore
+
+. 
+. 
+. log close
+      name:  <unnamed>
+       log:  /home/bobbyho/Projects/2021spring-stata-workshop/tmp/worklog20200204.log
+  log type:  text
+ closed on:   4 Feb 2021, 22:21:30
+----------------------------------------------------------------------------------------------------------------------------------------------

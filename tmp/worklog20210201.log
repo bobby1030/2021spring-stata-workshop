@@ -1,0 +1,440 @@
+----------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /home/bobbyho/Projects/2021spring-stata-workshop/tmp/worklog20210201.log
+  log type:  text
+ opened on:   4 Feb 2021, 23:01:09
+
+. 
+. 
+. 
+. /*
+>                                                 I. Data Cleaning 
+> */
+. 
+. 
+. * 0. Load Data
+. use $raw
+
+. 
+. 
+. * 1. Select necessary columns, and rename them
+. global cols    = "id zip v1 v2y v2m age v7a v106"
+
+. global newcols = "id zip gender birth_year birth_month age edu_level inc_level"
+
+. 
+. keep $cols
+
+. rename ($cols) ($newcols)
+
+. 
+. 
+. * 2. check missing value, duplication
+. * `ssc install mdesc` : this is for quick missing check
+. mdesc
+
+    Variable    |     Missing          Total     Percent Missing
+----------------+-----------------------------------------------
+             id |           0          1,895           0.00
+            zip |           0          1,895           0.00
+         gender |           0          1,895           0.00
+     birth_year |           0          1,895           0.00
+    birth_month |           0          1,895           0.00
+            age |           0          1,895           0.00
+      edu_level |           0          1,895           0.00
+      inc_level |           0          1,895           0.00
+----------------+-----------------------------------------------
+
+. 
+. duplicates report
+
+Duplicates in terms of all variables
+
+--------------------------------------
+   copies | observations       surplus
+----------+---------------------------
+        1 |         1895             0
+--------------------------------------
+
+. * append a column to record repeat number
+. duplicates tag, gen(repeat)
+
+Duplicates in terms of all variables
+
+. 
+. 
+. /*
+>                                                 II. Organize Data
+> */
+. 
+. 
+. * 1. Extract label for "zip", save to "zip_str" column
+. decode zip, gen(zip_str)
+
+. 
+. * 2. Extract city (at county level), save it to "city" column
+. *    note that one chinese character stands for 3 bytes
+. gen city = substr(zip_str, 1, 9)
+
+. 
+. 
+. 
+. * 3. Recode education level to education years
+. recode edu_level (1 2 5 9 13/17 22/99 = .) (3 = 6) (4 = 9) (6 7 8= 12) ///
+> (10 11 = 14) (12 = 15) (19 = 16) (20 = 18) (21 = 23), gen(edu_year)
+(1776 differences between edu_level and edu_year)
+
+. 
+. 
+. * 4. Recode income level to median income
+. recode inc_level (1 = 0) (95/max = .) (23/24 = 300000), gen(income)
+(491 differences between inc_level and income)
+
+. replace income = (income - 1.5)*10000 if inrange(inc_level, 2, 22)
+(1,404 real changes made)
+
+. 
+. 
+. * 5. Create column for ln(income)
+. *    note the NA produced by ln(0)
+. gen ln_income = ln(income)
+(486 missing values generated)
+
+. replace ln_income = 0 if income == 0
+(470 real changes made)
+
+. 
+. 
+. * 6. Create Dummy for gender
+. tab gender, gen(gender_)
+
+     v1 性別 |      Freq.     Percent        Cum.
+-------------+-----------------------------------
+          男 |        975       51.45       51.45
+          女 |        920       48.55      100.00
+-------------+-----------------------------------
+       Total |      1,895      100.00
+
+. 
+. gen female = gender_2 // for latter use
+
+. 
+. 
+. * 7. Assign entry year 
+. gen entry_year = birth_year + 12 if inrange(birth_month, 1, 8)
+(651 missing values generated)
+
+. replace entry_year = birth_year + 13 if missing(entry_year)
+(651 real changes made)
+
+. 
+. label var entry_year "國中入學學年度（民國）"
+
+. 
+. 
+. * 8. 
+. * (1) Create column recording entry year group mean education years, 
+. * (2) Create column recording num of obs. of each group
+. * (3) Give labels for these columns
+.          
+. bys entry_year: egen mean_edu_year = mean(edu_year)
+(3 missing values generated)
+
+. bys entry_year: egen size          = count(id)
+
+. 
+. label var mean_edu_year "平均教育年數（按國中入學年度）"
+
+. label var size "人數（按國中入學年度）"
+
+. 
+. * 9. Save tidy data 
+. save "data/final_data.dta", replace
+(note: file data/final_data.dta not found)
+file data/final_data.dta saved
+
+. 
+. 
+. /* 
+>                                                 III.Summary Statistics
+> */
+. 
+. 
+. * 1. Frequency table for gender in different city
+. tab city gender
+
+           |        v1 性別
+      city |        男         女 |     Total
+-----------+----------------------+----------
+    台中市 |        55         42 |        97 
+    台中縣 |        61         51 |       112 
+    台北市 |        30         44 |        74 
+    台北縣 |       226        225 |       451 
+    嘉義市 |        21         29 |        50 
+    基隆市 |        31         24 |        55 
+    宜蘭縣 |        34         26 |        60 
+    屏東縣 |        92         73 |       165 
+    彰化縣 |        76         68 |       144 
+    新竹縣 |        20         20 |        40 
+    桃園縣 |        48         54 |       102 
+    臺南市 |        72         70 |       142 
+    臺南縣 |        18         24 |        42 
+    花蓮縣 |        28         20 |        48 
+    苖栗縣 |        69         66 |       135 
+    雲林縣 |        25         22 |        47 
+    高雄市 |        44         36 |        80 
+    高雄縣 |        25         26 |        51 
+-----------+----------------------+----------
+     Total |       975        920 |     1,895 
+
+
+. 
+. * 2. Smmary Statistics for income and education year for cities
+. tab city, sum(income)
+
+            |   Summary of RECODE of inc_level
+            |                (v106
+            |       請問您現在個人平均每個
+            |         月工作收入多少元?)
+       city |        Mean   Std. Dev.       Freq.
+------------+------------------------------------
+     台中市 |   29479.167     31401.3          96
+     台中縣 |   25900.901   29773.373         111
+     台北市 |   38630.137   47655.158          73
+     台北縣 |   30033.632   31783.131         446
+     嘉義市 |       21900   25592.768          50
+     基隆市 |   28727.273   28499.808          55
+     宜蘭縣 |   18583.333   20170.705          60
+     屏東縣 |   24787.879   26848.443         165
+     彰化縣 |   20104.167   26235.011         144
+     新竹縣 |       28000   28617.728          40
+     桃園縣 |   35606.061   39681.595          99
+     臺南市 |   25246.479   34189.332         142
+     臺南縣 |   20119.048   19206.455          42
+     花蓮縣 |   31170.213   32507.738          47
+     苖栗縣 |   26564.885   36737.551         131
+     雲林縣 |   28404.255   23936.201          47
+     高雄市 |       22125   24608.003          80
+     高雄縣 |   23333.333   22308.444          51
+------------+------------------------------------
+      Total |   27147.419   31398.959       1,879
+
+. tab city, sum(edu_year)
+
+            | Summary of RECODE of edu_level (v7a
+            |        請問您的教育程度是:)
+       city |        Mean   Std. Dev.       Freq.
+------------+------------------------------------
+     台中市 |   13.180851    3.537701          94
+     台中縣 |   12.175926   4.0019358         108
+     台北市 |   13.478261    3.916814          69
+     台北縣 |   12.743649   3.9412776         433
+     嘉義市 |   12.270833   3.0855848          48
+     基隆市 |   11.867925   3.9905549          53
+     宜蘭縣 |   11.642857    3.650298          56
+     屏東縣 |   11.897959   3.7721668         147
+     彰化縣 |   11.680328   4.1226374         122
+     新竹縣 |   12.944444   3.8614908          36
+     桃園縣 |   13.367347   3.5183986          98
+     臺南市 |   12.627907   3.8771562         129
+     臺南縣 |   11.371429   3.9711142          35
+     花蓮縣 |   12.311111   2.8827246          45
+     苖栗縣 |   12.539683   3.7579799         126
+     雲林縣 |   12.318182   3.4015915          44
+     高雄市 |   12.175676   3.6950841          74
+     高雄縣 |        11.5   4.0053156          48
+------------+------------------------------------
+      Total |   12.452125   3.8292054       1,765
+
+. 
+. // bys city: sum(income edu_year) // long version
+. 
+. 
+. * 3. 
+. * (1) Create column recording entry year group mean education years, 
+. * (2) Create column recording num of obs. of each group
+.          
+. bys entry_year: egen group_mean_edu_year = mean(edu_year)
+(3 missing values generated)
+
+. bys entry_year: egen group_obs           = count(id)
+
+. 
+. 
+. * 4. Use collapse to summarize group size and its mean edu years,
+. *        and save it to "tmp/GroupEduYear.dta"
+. *    Don't forget to preserve original dataset
+. preserve
+
+. gen tmp = 1
+
+. collapse (sum) size = tmp  (mean) mean_edu_year = edu_year, by(entry_year)
+
+. save "$table/GroupEduYearTable.dta", replace
+(note: file tables/GroupEduYearTable.dta not found)
+file tables/GroupEduYearTable.dta saved
+
+. restore
+
+. 
+. 
+. /*
+>                                                 IV. Regression Analysis
+> */
+. 
+. * 1. 
+. * (1) Regress Income on education year
+. * (2) Regress Income on education year + gender (female)
+. * (3) Regress Income on education year + gender (female) + interaction term
+. 
+. * 2. Repeat above procedure with log income 
+. 
+. * 3. Use outreg2 to save results to "tables/regIncome.xls"
+. 
+. 
+. reg income edu_year, robust
+
+Linear regression                               Number of obs     =      1,750
+                                                F(1, 1748)        =     115.20
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0610
+                                                Root MSE          =      30810
+
+------------------------------------------------------------------------------
+             |               Robust
+      income |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+    edu_year |   2051.712   191.1575    10.73   0.000      1676.79    2426.633
+       _cons |   2705.643   2248.627     1.20   0.229    -1704.638    7115.924
+------------------------------------------------------------------------------
+
+. outreg2 using $table/regIncome.xls, bdec(2) sdec(2) slow(1000) replace
+tables/regIncome.xls
+dir : seeout
+
+. 
+. reg income edu_year female, robust
+
+Linear regression                               Number of obs     =      1,750
+                                                F(2, 1747)        =      87.23
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0854
+                                                Root MSE          =      30415
+
+------------------------------------------------------------------------------
+             |               Robust
+      income |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+    edu_year |    1964.17    191.035    10.28   0.000     1589.489    2338.851
+      female |  -9966.255   1452.467    -6.86   0.000    -12815.01   -7117.499
+       _cons |   8590.203    2491.18     3.45   0.001     3704.196    13476.21
+------------------------------------------------------------------------------
+
+. outreg2 using $table/regIncome.xls, bdec(2) sdec(2) slow(1000) append
+tables/regIncome.xls
+dir : seeout
+
+. 
+. reg income edu_year female female#c.edu_year, robust
+
+Linear regression                               Number of obs     =      1,750
+                                                F(3, 1746)        =      75.12
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0855
+                                                Root MSE          =      30422
+
+-----------------------------------------------------------------------------------
+                  |               Robust
+           income |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+------------------+----------------------------------------------------------------
+         edu_year |   1873.811   304.8603     6.15   0.000     1275.881     2471.74
+           female |  -12244.28   4511.927    -2.71   0.007    -21093.63   -3394.931
+                  |
+female#c.edu_year |
+               1  |   183.2575   381.0494     0.48   0.631    -564.1037    930.6187
+                  |
+            _cons |   9737.011   3798.031     2.56   0.010     2287.844    17186.18
+-----------------------------------------------------------------------------------
+
+. outreg2 using $table/regIncome.xls, bdec(2) sdec(2) slow(1000) append
+tables/regIncome.xls
+dir : seeout
+
+. 
+. reg ln_income edu_year, robust
+
+Linear regression                               Number of obs     =      1,750
+                                                F(1, 1748)        =      38.50
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0238
+                                                Root MSE          =     4.3288
+
+------------------------------------------------------------------------------
+             |               Robust
+   ln_income |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+    edu_year |   .1765524   .0284542     6.20   0.000     .1207446    .2323602
+       _cons |   5.639125   .3727772    15.13   0.000     4.907988    6.370261
+------------------------------------------------------------------------------
+
+. outreg2 using $table/regIncome.xls, bdec(2) sdec(2) slow(1000) append
+tables/regIncome.xls
+dir : seeout
+
+. 
+. reg ln_income edu_year female, robust
+
+Linear regression                               Number of obs     =      1,750
+                                                F(2, 1747)        =      38.06
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0447
+                                                Root MSE          =     4.2835
+
+------------------------------------------------------------------------------
+             |               Robust
+   ln_income |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+    edu_year |   .1654041   .0284142     5.82   0.000     .1096746    .2211336
+      female |   -1.26919   .2062591    -6.15   0.000    -1.673731   -.8646497
+       _cons |   6.388516   .3851597    16.59   0.000     5.633094    7.143939
+------------------------------------------------------------------------------
+
+. outreg2 using $table/regIncome.xls, bdec(2) sdec(2) slow(1000) append
+tables/regIncome.xls
+dir : seeout
+
+. 
+. reg ln_income edu_year female female#c.edu_year, robust
+
+Linear regression                               Number of obs     =      1,750
+                                                F(3, 1746)        =      26.27
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0466
+                                                Root MSE          =     4.2804
+
+-----------------------------------------------------------------------------------
+                  |               Robust
+        ln_income |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+------------------+----------------------------------------------------------------
+         edu_year |   .1158729   .0393161     2.95   0.003     .0387613    .1929846
+           female |  -2.517907   .7419041    -3.39   0.001    -3.973021   -1.062793
+                  |
+female#c.edu_year |
+               1  |    .100454   .0569386     1.76   0.078     -.011221     .212129
+                  |
+            _cons |   7.017148   .5195776    13.51   0.000     5.998088    8.036207
+-----------------------------------------------------------------------------------
+
+. outreg2 using $table/regIncome.xls, bdec(2) sdec(2) slow(1000) append
+tables/regIncome.xls
+dir : seeout
+
+. 
+. 
+. 
+. log close
+      name:  <unnamed>
+       log:  /home/bobbyho/Projects/2021spring-stata-workshop/tmp/worklog20210201.log
+  log type:  text
+ closed on:   4 Feb 2021, 23:01:10
+----------------------------------------------------------------------------------------------------------------------------------------
